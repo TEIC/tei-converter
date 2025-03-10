@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>pl.psnc.dl.ege.tei</groupId>
   <artifactId>tei-converter</artifactId>
-  <version>0.7.0</version>
+  <version>1.0.0</version>
   <name>EGE TEI Converter</name>
   <properties>
 
@@ -139,7 +139,7 @@
     <dependency>
       <groupId>org.tei</groupId>
       <artifactId>tei-javalib</artifactId>
-      <version>0.6</version>
+      <version>1.0.0</version>
       <scope>compile</scope>
     </dependency>
     <dependency>
