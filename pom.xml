@@ -3,7 +3,7 @@
   <modelVersion>4.0.0</modelVersion>
   <groupId>pl.psnc.dl.ege.tei</groupId>
   <artifactId>tei-converter</artifactId>
-  <version>1.0.0</version>
+  <version>1.1.0</version>
   <name>EGE TEI Converter</name>
   <properties>
 
