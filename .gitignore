@@ -16,3 +16,4 @@
 !*.ent
 !*.xsd
 !*.yml
+!test-input.xml.zip

@@ -22,15 +22,8 @@ import java.io.BufferedOutputStream;
 
 import javax.xml.transform.stream.StreamSource;
 
-import net.sf.saxon.s9api.Processor;
-import net.sf.saxon.s9api.QName;
-import net.sf.saxon.s9api.SaxonApiException;
-import net.sf.saxon.s9api.Serializer;
-import net.sf.saxon.s9api.XdmAtomicValue;
-import net.sf.saxon.s9api.XsltCompiler;
-import net.sf.saxon.s9api.XsltExecutable;
-import net.sf.saxon.s9api.Xslt30Transformer;
-import net.sf.saxon.s9api.XdmNode;
+import net.sf.saxon.lib.FeatureKeys;
+import net.sf.saxon.s9api.*;
 
 import org.xml.sax.ErrorHandler;
 
@@ -135,8 +128,13 @@ public class TEIConverter implements Converter,ErrorHandler {
 	public void warning(SAXParseException exception) throws SAXException {
 		LOGGER.info("Warning: " + exception.getMessage());
 	}
+
+	public void convert(InputStream inputStream, OutputStream outputStream, ConversionActionArguments conversionDataTypes) throws ConverterException, IOException{
+		convert(inputStream,outputStream,conversionDataTypes, null);
+	}
+
 	public void convert(InputStream inputStream, OutputStream outputStream,
-			final ConversionActionArguments conversionDataTypes)
+			final ConversionActionArguments conversionDataTypes, String tempDir)
 			throws ConverterException, IOException {
 		boolean found = false;
 
@@ -153,7 +151,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 						    + conversionDataTypes.getOutputType().toString()
 						    + " WITH profile " + profile );
 					convertDocument(inputStream, outputStream, cadt.getInputType(), cadt.getOutputType(),
-							cadt.getProperties());
+							cadt.getProperties(), tempDir);
 					found = true;
 				}
 			}
@@ -184,7 +182,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 	 * Prepares transformation : based on MIME type.
 	 */
 	private void convertDocument(InputStream inputStream, OutputStream outputStream,
-			DataType fromDataType, DataType toDataType, Map<String, String> properties) throws IOException,
+			DataType fromDataType, DataType toDataType, Map<String, String> properties, String tempDir) throws IOException,
 			SaxonApiException, ConfigurationException, ConverterException {
 		String toMimeType = toDataType.getMimeType();
 		String profile = properties.get(ConverterConfiguration.PROFILE_KEY);
@@ -198,7 +196,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 				LOGGER.debug(ConverterConfiguration.PROFILE_NOT_FOUND_MSG);
 				profile = EGEConstants.DEFAULT_PROFILE;
 			}
-			transformFromDocX(inputStream, outputStream, profile, properties);
+			transformFromDocX(inputStream, outputStream, profile, properties, tempDir);
 		}
 		// from XlSX to TEI
 		else if (ConverterConfiguration.XML_MIME.equals(toMimeType)
@@ -209,7 +207,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 				LOGGER.debug(ConverterConfiguration.PROFILE_NOT_FOUND_MSG);
 				profile = EGEConstants.DEFAULT_PROFILE;
 			}
-			transformFromXlsX(inputStream, outputStream, profile, properties);
+			transformFromXlsX(inputStream, outputStream, profile, properties, tempDir);
 		}
 		// from HTML to TEI
 		else if (ConverterConfiguration.XML_MIME.equals(toMimeType)
@@ -221,7 +219,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 				profile = EGEConstants.DEFAULT_PROFILE;
 			}
 			properties.put("extension", "xml");
-			performXsltTransformation(inputStream, outputStream, Format.XHTML.getProfile(), profile, "from", properties);
+			performXsltTransformation(inputStream, outputStream, Format.XHTML.getProfile(), profile, "from", properties, tempDir);
 		}
 		// from TEI to DOCX
 		else if (Format.DOCX.getMimeType().equals(toMimeType)) {
@@ -232,7 +230,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			Processor proc = SaxonProcFactory.getProcessor();
 			XsltCompiler comp = proc.newXsltCompiler();
-			transformToDocX(inputStream, outputStream, proc, comp, profile, properties);
+			transformToDocX(inputStream, outputStream, proc, comp, profile, properties, tempDir);
 		}
 		// from ODT to TEI
 		else if (ConverterConfiguration.XML_MIME.equals(toMimeType)
@@ -243,7 +241,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 				LOGGER.debug(ConverterConfiguration.PROFILE_NOT_FOUND_MSG);
 				profile = EGEConstants.DEFAULT_PROFILE;
 			}
-			transformFromOdt(inputStream, outputStream, profile, properties);
+			transformFromOdt(inputStream, outputStream, profile, properties, tempDir);
 		}
 		// from TEI to ODT
 		else if (Format.ODT.getMimeType().equals(toMimeType)) {
@@ -254,7 +252,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			Processor proc = SaxonProcFactory.getProcessor();
 			XsltCompiler comp = proc.newXsltCompiler();
-			transformToOdt(inputStream, outputStream, proc, comp, profile, properties);
+			transformToOdt(inputStream, outputStream, proc, comp, profile, properties, tempDir);
 		}
 		// TEI to HTML for ODD
 		else if (Format.ODDHTML.getMimeType().equals(toMimeType)
@@ -266,7 +264,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "html");
 			performXsltTransformation(inputStream, outputStream, Format.ODDHTML
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to XHTML
 		else if (Format.XHTML.getMimeType().equals(toMimeType)) {
@@ -277,7 +275,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "html");
 			performXsltTransformation(inputStream, outputStream, Format.XHTML
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to RELAXNG
 		else if (Format.RELAXNG.getMimeType().equals(toMimeType)) {
@@ -293,10 +291,10 @@ public class TEIConverter implements Converter,ErrorHandler {
 							+ File.separator + profile + File.separator + Format.RELAXNG
 							.getProfile()
 							+ File.separator + "to" + ".xsl").exists()){
-				performXsltTransformation(inputStream, outputStream, "relaxng", profile, "to", properties);
+				performXsltTransformation(inputStream, outputStream, "relaxng", profile, "to", properties, tempDir);
 			} else {
 				performXsltTransformation(inputStream, outputStream, Format.RELAXNG
-						.getProfile(), profile, "to", properties);
+						.getProfile(), profile, "to", properties, tempDir);
 			}
 		}
 		// TEI to RNC
@@ -310,7 +308,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			properties.put("extension", "rnc");
 			try {
 			    generateRngThenTrang(inputStream, outputStream, Format.RELAXNG
-							       .getProfile(), profile, properties);
+							       .getProfile(), profile, properties, tempDir);
 			}
 			catch (Exception e) {
 				throw new IOException("to RNG then Trang to make RNC failed: " + e.toString());
@@ -327,7 +325,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			properties.put("extension", "zip");
 			try {
 			    generateRngThenTrang(inputStream, outputStream, Format.RELAXNG
-							       .getProfile(), profile, properties);
+							       .getProfile(), profile, properties, tempDir);
 			}
 			catch (Exception e) {
 				throw new IOException("to RNG then Trang to make XSD failed: " + e.toString());
@@ -343,7 +341,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "dtd");
 			performXsltTransformation(inputStream, outputStream, Format.DTD
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to LITE
 		else if (Format.LITE.getMimeType().equals(toMimeType)
@@ -355,7 +353,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "xml");
 			performXsltTransformation(inputStream, outputStream, Format.LITE
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to LATEX
 		else if (Format.LATEX.getMimeType().equals(toMimeType)) {
@@ -366,7 +364,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "tex");
 			performXsltTransformation(inputStream, outputStream, Format.LATEX
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to ODDJSON
 		else if (Format.ODDJSON.getMimeType().equals(toMimeType)) {
@@ -377,7 +375,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "json");
 			performXsltTransformation(inputStream, outputStream, Format.ODDJSON
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to FO
 		else if (Format.FO.getMimeType().equals(toMimeType)) {
@@ -389,7 +387,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "fo");
 			performXsltTransformation(inputStream, outputStream, Format.FO
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to EPUB
 		else if (Format.EPUB3.getMimeType().equals(toMimeType)) {
@@ -398,7 +396,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 				LOGGER.debug(ConverterConfiguration.PROFILE_NOT_FOUND_MSG);
 				profile = EGEConstants.DEFAULT_PROFILE;
 			}
-			transformToEpub(inputStream, outputStream, profile, Format.EPUB3.getProfile(), properties);
+			transformToEpub(inputStream, outputStream, profile, Format.EPUB3.getProfile(), properties, tempDir);
 		}
 		// TEI to TEXT
 		else if (Format.TEXT.getMimeType().equals(toMimeType)
@@ -410,7 +408,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "txt");
 			performXsltTransformation(inputStream, outputStream, Format.TEXT
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to identity XML
 		else if (Format.XML.getMimeType().equals(toMimeType)
@@ -422,7 +420,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "xml");
 			performXsltTransformation(inputStream, outputStream, Format.XML
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 		// TEI to RDF
 		else if (Format.RDF.getMimeType().equals(toMimeType)
@@ -434,7 +432,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			}
 			properties.put("extension", "rdf");
 			performXsltTransformation(inputStream, outputStream, Format.RDF
-					.getProfile(), profile,"to", properties);
+					.getProfile(), profile,"to", properties, tempDir);
 		}
 
 	}
@@ -492,14 +490,24 @@ public class TEIConverter implements Converter,ErrorHandler {
 		return null;
 	}
 
-	private File prepareTempDir() {
+	//private File prepareTempDir() {
+	//	return prepareTempDir(null);
+	//}
+
+	private File prepareTempDir(String tempDir) {
 		File inTempDir = null;
 		String uid = UUID.randomUUID().toString();
-		inTempDir = new File(EGEConstants.TEMP_PATH + File.separator + uid
-				+ File.separator);
+		if(tempDir!=null){
+			inTempDir = new File(tempDir + File.separator + uid
+					+ File.separator);
+		} else {
+			inTempDir = new File(EGEConstants.TEMP_PATH + File.separator + uid
+					+ File.separator);
+		}
 		inTempDir.mkdir();
 		return inTempDir;
 	}
+
 
 	/**
 	 * Decompress zips containing images
@@ -528,22 +536,31 @@ public class TEIConverter implements Converter,ErrorHandler {
 	 * Performs transformation with XSLT
 	 */
 	private void performXsltTransformation(InputStream inputStream,
-					       OutputStream outputStream, String id, String profile, String direction, Map<String, String> properties)
-			throws IOException, SaxonApiException, ConverterException {
+					       OutputStream outputStream, String id, String profile, String direction, Map<String, String> properties, String tempDir)
+			throws IOException, ConverterException, SaxonApiException {
 		FileOutputStream fos = null;
 		InputStream is = null;
 		File inTmpDir = null;
 		File outTempDir = null;
 		File outputDir = null;
 		try {
-			inTmpDir = prepareTempDir();
+			inTmpDir = prepareTempDir(tempDir);
 			ior.decompressStream(inputStream, inTmpDir);
 			// avoid processing files ending in .bin
 			File inputFile = searchForData(inTmpDir, "^.*(?<!bin)$");
 			if(inputFile!=null) {
-			outTempDir = prepareTempDir();
+			outTempDir = prepareTempDir(tempDir);
 			is = prepareInputData(inputStream, inTmpDir, inputFile);
 			Processor proc = SaxonProcFactory.getProcessor();
+			DocumentBuilder documentBuilder = proc.newDocumentBuilder();
+			//required to prevent xxe injections
+			try {
+				documentBuilder.build(inputFile);
+			} catch (SaxonApiException e) {
+				LOGGER.error("There is a Doctype Declaration present in the source document that cannot be processed due to security reasons. Please remove it from your file and try again. "
+						+ e.getMessage());
+				return;
+			}
 			XsltCompiler comp = proc.newXsltCompiler();
 			// get images and correct graphics tags
 			XdmNode initialNode = getImages(inTmpDir.toString(), outTempDir.toString(), "media" + File.separator,
@@ -573,7 +590,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			transformer.applyTemplates(initialNode, result);
 			//need to close fileoutputstreams before saving the files (see https://github.com/TEIC/TEIGarage/issues/81)
 			}
-		} finally {
+				} finally {
 			try {
 				is.close();
 			} catch (Exception ex) {
@@ -598,7 +615,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 	 * Performs transformation over XSLT to make RNG schema, then runs trang
 	 */
 	private void generateRngThenTrang(InputStream inputStream,
-							OutputStream outputStream, String id, String profile, Map<String, String> properties)
+							OutputStream outputStream, String id, String profile, Map<String, String> properties, String tempDir)
 	    throws IOException, SaxonApiException, ConverterException, InputFailedException, SAXException, OutputFailedException, InvalidParamsException {
 		FileOutputStream fos = null;
 		InputStream is = null;
@@ -606,12 +623,21 @@ public class TEIConverter implements Converter,ErrorHandler {
 		File outTempDir = null;
 		File outputDir = null;
 		try {
-			inTmpDir = prepareTempDir();
+			inTmpDir = prepareTempDir(tempDir);
 			ior.decompressStream(inputStream, inTmpDir);
 			File inputFile = searchForData(inTmpDir, "^.*");
-			outTempDir = prepareTempDir();
+			outTempDir = prepareTempDir(tempDir);
 			is = prepareInputData(inputStream, inTmpDir, inputFile);
 			Processor proc = SaxonProcFactory.getProcessor();
+			DocumentBuilder documentBuilder = proc.newDocumentBuilder();
+			//required to prevent xxe injections
+			try {
+				documentBuilder.build(inputFile);
+			} catch (SaxonApiException e) {
+				LOGGER.error("There is a Doctype Declaration present in the source document that cannot be processed due to security reasons. Please remove it from your file and try again. "
+						+ e.getMessage());
+				return;
+			}
 			XsltCompiler comp = proc.newXsltCompiler();
 			// get images and correct graphics tags
 			XdmNode initialNode = getImages(inTmpDir.toString(), outTempDir.toString(), "media" + File.separator,
@@ -744,9 +770,9 @@ public class TEIConverter implements Converter,ErrorHandler {
 	 * Performs from XlsX to TEI transformation
 	 */
 	private void transformFromXlsX(InputStream is, OutputStream os,
-			String profile, Map<String, String> properties) throws IOException, SaxonApiException,
+			String profile, Map<String, String> properties, String tempDir) throws IOException, SaxonApiException,
 			ConfigurationException, ConverterException {
-		File tmpDir = prepareTempDir();
+		File tmpDir = prepareTempDir(tempDir);
 		InputStream fis = null;
 		String fileName = properties.get("fileName");
 		ComplexConverter xlsX = new XlsXConverter(profile, fileName);
@@ -782,9 +808,9 @@ public class TEIConverter implements Converter,ErrorHandler {
 	 * Performs from DocX to TEI transformation
 	 */
 	private void transformFromDocX(InputStream is, OutputStream os,
-			String profile, Map<String, String> properties) throws IOException, SaxonApiException,
+			String profile, Map<String, String> properties, String tempDir) throws IOException, SaxonApiException,
 			ConfigurationException, ConverterException {
-		File tmpDir = prepareTempDir();
+		File tmpDir = prepareTempDir(tempDir);
 		InputStream fis = null;
 		String fileName = properties.get("fileName");
 		ComplexConverter docX = new DocXConverter(profile, fileName);
@@ -821,11 +847,11 @@ public class TEIConverter implements Converter,ErrorHandler {
 	 * Performs From TEI to DocX transformation
 	 */
 	private void transformToDocX(InputStream is, OutputStream os,
-			Processor proc, XsltCompiler comp, final String profile, Map<String, String> properties)
+			Processor proc, XsltCompiler comp, final String profile, Map<String, String> properties, String tempDir)
 			throws IOException, SaxonApiException, ConfigurationException,
 			ConverterException {
-		File inTmpDir = prepareTempDir();
-		File outTmpDir = prepareTempDir();
+		File inTmpDir = prepareTempDir(tempDir);
+		File outTmpDir = prepareTempDir(tempDir);
 		ior.decompressStream(is, inTmpDir);
 		File inputFile = searchForData(inTmpDir, "^.*");
 		InputStream inputStream = prepareInputData(is, inTmpDir, inputFile);
@@ -869,9 +895,9 @@ public class TEIConverter implements Converter,ErrorHandler {
 	}
 
 	private void transformFromOdt(InputStream is, OutputStream os,
-			String profile, Map<String, String> properties) throws IOException, SaxonApiException,
+			String profile, Map<String, String> properties, String tempDir) throws IOException, SaxonApiException,
 			ConfigurationException, ConverterException {
-		File tmpDir = prepareTempDir();
+		File tmpDir = prepareTempDir(tempDir);
 		InputStream fis = null;
 		String fileName = properties.get("fileName");
 		ComplexConverter odt = new OdtConverter(profile, fileName);
@@ -905,11 +931,11 @@ public class TEIConverter implements Converter,ErrorHandler {
 	}
 
 	private void transformToOdt(InputStream is, OutputStream os,
-			Processor proc, XsltCompiler comp, final String profile, Map<String, String> properties)
+			Processor proc, XsltCompiler comp, final String profile, Map<String, String> properties, String tempDir)
 			throws IOException, SaxonApiException, ConfigurationException,
 			ConverterException {
-		File inTmpDir = prepareTempDir();
-		File outTmpDir = prepareTempDir();
+		File inTmpDir = prepareTempDir(tempDir);
+		File outTmpDir = prepareTempDir(tempDir);
 		ior.decompressStream(is, inTmpDir);
 		File inputFile = searchForData(inTmpDir, "^.*");
 		InputStream inputStream = prepareInputData(is, inTmpDir, inputFile);
@@ -953,7 +979,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 	}
 
 	public void transformToEpub(InputStream inputStream, OutputStream outputStream,
-			final String profile, String id, Map<String, String> properties)
+			final String profile, String id, Map<String, String> properties, String tempDir)
 			throws IOException, SaxonApiException, ConfigurationException,
 			ConverterException {
 		FileOutputStream fos = null;
@@ -962,12 +988,21 @@ public class TEIConverter implements Converter,ErrorHandler {
 		File outTempDir = null;
 		File outputDir = null;
 		try {
-			inTmpDir = prepareTempDir();
+			inTmpDir = prepareTempDir(tempDir);
 			ior.decompressStream(inputStream, inTmpDir);
 			File inputFile = searchForData(inTmpDir, "^.*");
-			outTempDir = prepareTempDir();
+			outTempDir = prepareTempDir(tempDir);
 			is = prepareInputData(inputStream, inTmpDir, inputFile);
 			Processor proc = SaxonProcFactory.getProcessor();
+			DocumentBuilder documentBuilder = proc.newDocumentBuilder();
+			//required to prevent xxe injections
+			try {
+				documentBuilder.build(inputFile);
+			} catch (SaxonApiException e) {
+				LOGGER.error("There is a Doctype Declaration present in the source document that cannot be processed due to security reasons. Please remove it from your file and try again. "
+						+ e.getMessage());
+				return;
+			}
 			XsltCompiler comp = proc.newXsltCompiler();
 			// get images and correct graphics tags
 			XdmNode initialNode = getImages(inTmpDir.toString(), outTempDir.toString(), "OPS" + File.separator + "media" +
@@ -993,7 +1028,7 @@ public class TEIConverter implements Converter,ErrorHandler {
 			transformer.setGlobalContextItem(initialNode);
 			Serializer result = proc.newSerializer();
 			transformer.applyTemplates(initialNode, result);
-			outputDir = prepareTempDir();
+			outputDir = prepareTempDir(tempDir);
 			File oEpubFile = new File(outputDir.getAbsolutePath() + File.separator + "result.epub");
 			fos = new FileOutputStream(oEpubFile);
 			// pack directory to final Epub file
