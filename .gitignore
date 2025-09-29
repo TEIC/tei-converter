@@ -17,3 +17,6 @@
 !*.xsd
 !*.yml
 !test-input.xml.zip
+!test-input.odd.zip
+!expected-output.xml
+!expected-output.txt
